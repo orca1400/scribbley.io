@@ -359,6 +359,10 @@ export const BookEditor: React.FC<{
   const [beats, setBeats] = useState<{ id: string; text: string }[]>([{ id: newId(), text: '' }]);
 
   const [error, setError] = useState('');
+  const [summaryErrors, setSummaryErrors] = useState<string[]>([]);
+
+  // Abort controller for chapter generation
+  const chapterAbortRef = React.useRef<AbortController | null>(null);
 
   // Rewrite UI
   const [selectedText, setSelectedText] = useState('');
@@ -539,7 +543,12 @@ export const BookEditor: React.FC<{
       for (let i = 0; i < chapters.length; i++) {
         const ch = chapters[i];
         if (ch.hasChanges) {
-          await generateAndSaveChapterSummary(ch.title, ch.content, i + 1);
+          try {
+            await generateAndSaveChapterSummary(ch.title, ch.content, i + 1);
+          } catch (summaryError) {
+            console.error('Failed to generate chapter summary during save:', summaryError);
+            setSummaryErrors(prev => [...prev, `Failed to generate summary for ${ch.title}: ${(summaryError as Error).message || 'Unknown error'}`]);
+          }
         }
       }
 
@@ -589,6 +598,13 @@ export const BookEditor: React.FC<{
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isSaving, chapters, book.title, bookTitle, saveChanges]);
+
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      chapterAbortRef.current?.abort();
+    };
+  }, []);
 
   const generateAndSaveChapterSummary = async (
     chapterTitle: string,
@@ -693,8 +709,13 @@ export const BookEditor: React.FC<{
       return;
     }
 
+    chapterAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    chapterAbortRef.current = ctrl;
+
     setIsGeneratingChapter(true);
     setError('');
+    setSummaryErrors([]);
 
     try {
       const { data: auth } = await supabase.auth.getSession();
@@ -740,6 +761,7 @@ export const BookEditor: React.FC<{
             'x-ai-consent': 'true',
             'x-ai-consent-version': CONSENT_VERSION,
           },
+          signal: ctrl.signal,
           timeoutMs: 120_000,
           retries: 2,
         }
@@ -761,6 +783,7 @@ export const BookEditor: React.FC<{
         await generateAndSaveChapterSummary(newChapter.title, newChapter.content, idx);
       } catch (summaryError) {
         console.error('Failed to generate chapter summary:', summaryError);
+        setSummaryErrors(prev => [...prev, `Failed to generate summary for ${newChapter.title}: ${(summaryError as Error).message || 'Unknown error'}`]);
       }
 
       // usage update + notifications (keep your existing logic)
@@ -834,6 +857,10 @@ export const BookEditor: React.FC<{
       setNewChapterLength(null);
       // keep beats state as user preference
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        console.log('Chapter generation was aborted');
+        return;
+      }
       console.error('Error generating chapter:', err);
       const mixedContentHint =
         typeof window !== 'undefined' &&
@@ -845,6 +872,7 @@ export const BookEditor: React.FC<{
       else if (isTimeoutLike(err)) setError('The AI request timed out. Please retry or reduce chapter length.');
       else setError(err?.message || 'Failed to generate chapter. Please try again.');
     } finally {
+      if (chapterAbortRef.current?.signal === ctrl.signal) chapterAbortRef.current = null;
       setIsGeneratingChapter(false);
     }
   };
@@ -1115,6 +1143,27 @@ export const BookEditor: React.FC<{
         {!!error && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4" aria-live="polite">
             {error}
+          </div>
+        )}
+
+        {/* Summary Generation Errors */}
+        {summaryErrors.length > 0 && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mb-4" aria-live="polite">
+            <div className="font-medium mb-2">⚠️ Chapter Summary Warnings:</div>
+            <ul className="text-sm space-y-1">
+              {summaryErrors.map((err, idx) => (
+                <li key={idx}>• {err}</li>
+              ))}
+            </ul>
+            <div className="text-xs mt-2 text-amber-700">
+              Your content was saved successfully, but some chapter summaries couldn't be generated.
+            </div>
+            <button
+              onClick={() => setSummaryErrors([])}
+              className="text-xs text-amber-600 hover:text-amber-800 underline mt-1"
+            >
+              Dismiss warnings
+            </button>
           </div>
         )}
 

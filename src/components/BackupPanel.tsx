@@ -84,7 +84,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       setSuccess(null);
 
       await restoreBackup(backupPreview, userId);
-      setSuccess('Backup restored successfully! Your data has been updated.');
+      setSuccess('Backup restore completed! Your data has been updated. Note: This was a "best effort" restore - if any errors occurred during the process, some data may not have been restored.');
       
       // Refresh stats
       await loadStats();
@@ -96,7 +96,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      setError('Failed to restore backup: ' + (error as Error).message);
+      setError(`Backup restore failed or was incomplete: ${(error as Error).message}. This may have been a partial restore - some data might have been restored successfully before the error occurred. Please check your data and retry if needed.`);
     } finally {
       setIsRestoring(false);
     }
@@ -193,8 +193,24 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
               Restore Backup
             </h3>
             <p className="text-gray-600 mb-4">
-              Upload a backup file to restore your data. This will merge with your existing data (books and summaries will be updated if they exist).
+              Upload a backup file to restore your data. <strong>Restores are "best effort"</strong> - if the process is interrupted by network errors or browser issues, the restore may be partial. This will merge with your existing data (books and summaries will be updated if they exist).
             </p>
+
+            {/* Important Warning */}
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-orange-800">
+                  <strong>Important Restore Limitations:</strong>
+                  <ul className="mt-2 space-y-1">
+                    <li>• Restores may be partial if interrupted by network issues</li>
+                    <li>• Browser crashes or tab closures can cause incomplete restores</li>
+                    <li>• Large backups may take several minutes to process</li>
+                    <li>• Keep this tab open and your device connected during restore</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -240,8 +256,11 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-800">
-                      <strong>Important:</strong> Restoring will merge this backup with your current data. 
-                      Books and summaries with matching IDs will be updated. This action cannot be undone.
+                      <strong>Warning:</strong> Restoring will merge this backup with your current data. 
+                      Books and summaries with matching IDs will be updated. <strong>This action cannot be undone.</strong>
+                      <br/><br/>
+                      <strong>Restore is "best effort":</strong> The process may be partial if interrupted by network errors, browser issues, or device problems. 
+                      Ensure stable internet and keep this tab open until completion.
                     </div>
                   </div>
                 </div>

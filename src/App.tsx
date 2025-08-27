@@ -300,6 +300,7 @@ function App() {
 
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [summaryErrors, setSummaryErrors] = React.useState<string[]>([]);
   const [showingSignupSuccess, setShowingSignupSuccess] = React.useState(false);
 
   const [isCreatingFromDashboard, setIsCreatingFromDashboard] = React.useState(false);
@@ -639,6 +640,7 @@ function App() {
 
     setIsGenerating(true);
     setError('');
+    setSummaryErrors([]);
 
     // Project limit check
     if (user && profile?.projects_limit != null) {
@@ -758,7 +760,10 @@ function App() {
               selectedGenre || 'fiction',
               selectedSubgenre || ''
             )
-          ).catch((e) => console.error('First chapter summary failed:', e));
+          ).catch((e) => {
+            console.error('First chapter summary failed:', e);
+            setSummaryErrors(prev => [...prev, `Failed to generate summary for Chapter 1: ${e.message || 'Unknown error'}`]);
+          });
 
           setCurrentBook(savedBook);
           setStep('editor');
@@ -908,7 +913,7 @@ function App() {
           // Summaries in small batches
           const BATCH = 3;
           for (let i = 0; i < parsed.chapters.length; i += BATCH) {
-            const slice = parsed.chapters.slice(i, i + BATCH).map((chapter, idx) =>
+            const summaryPromises = parsed.chapters.slice(i, i + BATCH).map((chapter, idx) =>
               withRetry(async () => {
                 const resp = await edgeFetchWithRetry<{ summary?: string }>(
                   'generate-summary',
@@ -942,16 +947,25 @@ function App() {
                   chapterNumber: i + idx + 1,
                   summary: summaryText,
                 });
+              }).catch(err => {
+                const chapterNum = i + idx + 1;
+                const errorMsg = `Failed to generate summary for Chapter ${chapterNum}: ${err.message || 'Unknown error'}`;
+                setSummaryErrors(prev => [...prev, errorMsg]);
+                console.error('Chapter summary error:', err);
+                throw err; // Re-throw to maintain original behavior
               })
             );
-            Promise.allSettled(slice).catch(() => {});
+            Promise.allSettled(summaryPromises).catch(() => {});
           }
         }
       }
 
       setStep('result');
     } catch (err: any) {
-      if (err?.name === 'AbortError') return;
+      if (err?.name === 'AbortError') {
+        console.log('Book generation was aborted');
+        return;
+      }
       console.error('Error generating book:', err);
 
       const mixedContentHint =
@@ -981,6 +995,7 @@ function App() {
     setSelectedSubgenre('');
     setCoverUrl(null); setCoverAttempt(0); setCoverErr('');
     setDescription(''); setGeneratedBook(''); setParsedBook(null); setError('');
+    setSummaryErrors([]);
     setCurrentBook(null);
     setTotalChapters(effectiveTier === 'free' ? 5 : 10);
     setAnonConsent(false);
@@ -995,7 +1010,7 @@ function App() {
     setCurrentBook(null);
     setSelectedGenre(null);
     setSelectedSubgenre(''); setDescription(''); setGeneratedBook(''); setParsedBook(null);
-    setCoverUrl(null); setCoverAttempt(0); setCoverErr(''); setError('');
+    setCoverUrl(null); setCoverAttempt(0); setCoverErr(''); setError(''); setSummaryErrors([]);
     coverStreamAbortRef.current?.abort();
     const limit = chapterLimitFor(profile, user?.id ?? null, effectiveTier);
     const defaultChapters = effectiveTier === 'free' ? 5 : 10;
@@ -1592,6 +1607,21 @@ function App() {
                   </div>
                 )}
 
+                {/* Summary Generation Errors */}
+                {summaryErrors.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mt-4" aria-live="polite">
+                    <div className="font-medium mb-2">⚠️ Chapter Summary Warnings:</div>
+                    <ul className="text-sm space-y-1">
+                      {summaryErrors.map((err, idx) => (
+                        <li key={idx}>• {err}</li>
+                      ))}
+                    </ul>
+                    <div className="text-xs mt-2 text-amber-700">
+                      Your book was created successfully, but some chapter summaries couldn't be generated. You can try generating them later from the editor.
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-4 justify-center mt-8">
                   <button onClick={() => setStep('genre')} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
@@ -1689,6 +1719,21 @@ function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Summary Generation Errors on Result Page */}
+                {summaryErrors.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mb-6" aria-live="polite">
+                    <div className="font-medium mb-2">⚠️ Chapter Summary Warnings:</div>
+                    <ul className="text-sm space-y-1">
+                      {summaryErrors.map((err, idx) => (
+                        <li key={idx}>• {err}</li>
+                      ))}
+                    </ul>
+                    <div className="text-xs mt-2 text-amber-700">
+                      Your book was created successfully, but some chapter summaries couldn't be generated. You can try generating them later from the editor.
+                    </div>
+                  </div>
+                )}
 
                 {parsedBook && (
                   <ChapterList
