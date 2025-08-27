@@ -18,7 +18,6 @@
  *   BACKUP_API_KEY
  */
 
-import { createClient } from '@supabase/supabase-js';
 import fs from 'fs/promises';
 import path from 'path';
 
