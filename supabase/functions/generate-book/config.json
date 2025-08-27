@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow_net": ["https://api.openai.com"]
+  }
+}
