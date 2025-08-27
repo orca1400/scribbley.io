@@ -315,6 +315,10 @@ function App() {
   const [coverErr, setCoverErr] = React.useState<string>('');
   const [coverLoading, setCoverLoading] = React.useState<boolean>(false);
 
+  // Summary generation errors/warnings
+  const [summaryErrors, setSummaryErrors] = React.useState<string[]>([]);
+  const [summaryWarnings, setSummaryWarnings] = React.useState<string[]>([]);
+
   // Refs to fight stale closures
   const pendingBookSaveRef = React.useRef<{
     title: string; genre: string; subgenre: string; description: string; content: string; wordCount: number;
@@ -506,7 +510,7 @@ function App() {
   async function generateAndSaveChapterSummary(
     userId: string, bookId: string, chapterTitle: string, chapterContent: string, chapterNumber: number,
     bookTitle: string, genre: string, subgenre: string
-  ) {
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const { data: auth } = await supabase.auth.getSession();
       const bearer = auth?.session?.access_token ?? null;
@@ -530,8 +534,13 @@ function App() {
       const summaryText = (data.summary ?? '').trim();
       if (!summaryText) throw new Error('Generated summary is empty');
 
-      return upsertChapterSummary({ userId, bookId, chapterNumber, summary: summaryText });
-    } catch (e) { console.error('Chapter summary error:', e); throw e; }
+      await upsertChapterSummary({ userId, bookId, chapterNumber, summary: summaryText });
+      return { success: true };
+    } catch (e) { 
+      console.error('Chapter summary error:', e); 
+      const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+      return { success: false, error: `Chapter ${chapterNumber} summary failed: ${errorMsg}` };
+    }
   }
 
   /** Transform beats [{label,value}] into an array of strings "Label: value" for the API */
@@ -758,7 +767,14 @@ function App() {
               selectedGenre || 'fiction',
               selectedSubgenre || ''
             )
-          ).catch((e) => console.error('First chapter summary failed:', e));
+          ).then((result) => {
+            if (!result.success && result.error) {
+              setSummaryWarnings(prev => [...prev, result.error!]);
+            }
+          }).catch((e) => {
+            console.error('First chapter summary failed:', e);
+            setSummaryErrors(prev => [...prev, 'Failed to generate summary for Chapter 1']);
+          });
 
           setCurrentBook(savedBook);
           setStep('editor');
@@ -944,7 +960,17 @@ function App() {
                 });
               })
             );
-            Promise.allSettled(slice).catch(() => {});
+            
+            // Handle batch results and collect errors
+            const results = await Promise.allSettled(slice);
+            const failures = results
+              .map((result, idx) => ({ result, chapterNum: i + idx + 1 }))
+              .filter(({ result }) => result.status === 'rejected')
+              .map(({ chapterNum }) => `Chapter ${chapterNum} summary failed`);
+            
+            if (failures.length > 0) {
+              setSummaryWarnings(prev => [...prev, ...failures]);
+            }
           }
         }
       }
@@ -985,7 +1011,13 @@ function App() {
     setTotalChapters(effectiveTier === 'free' ? 5 : 10);
     setAnonConsent(false);
     setAuthedConsent(!!profile?.ai_processing_consent);
+    setSummaryErrors([]); setSummaryWarnings([]);
+    
+    // Abort controllers and ensure loading states are cleared
     coverStreamAbortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setCoverLoading(false);
+    setIsGenerating(false);
   };
 
   const handleCreateBook = async () => {
@@ -996,7 +1028,14 @@ function App() {
     setSelectedGenre(null);
     setSelectedSubgenre(''); setDescription(''); setGeneratedBook(''); setParsedBook(null);
     setCoverUrl(null); setCoverAttempt(0); setCoverErr(''); setError('');
+    setSummaryErrors([]); setSummaryWarnings([]);
+    
+    // Abort controllers and ensure loading states are cleared
     coverStreamAbortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setCoverLoading(false);
+    setIsGenerating(false);
+    
     const limit = chapterLimitFor(profile, user?.id ?? null, effectiveTier);
     const defaultChapters = effectiveTier === 'free' ? 5 : 10;
     setTotalChapters(Math.min(defaultChapters, limit));
@@ -1004,7 +1043,14 @@ function App() {
 
   const handleOpenBook = (book: UserBook) => {
     setCurrentBook(book);
+    
+    // Clear any ongoing operations and loading states
     coverStreamAbortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setCoverLoading(false);
+    setIsGenerating(false);
+    setSummaryErrors([]); setSummaryWarnings([]);
+    
     loadCoverForBook(book.id);
     setStep('editor');
   };
@@ -1014,7 +1060,14 @@ function App() {
     setGeneratedBook(book.content);
     const parsed = parseBookIntoChapters(book.content, false);
     setParsedBook(parsed);
+    
+    // Clear any ongoing operations and loading states
     coverStreamAbortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setCoverLoading(false);
+    setIsGenerating(false);
+    setSummaryErrors([]); setSummaryWarnings([]);
+    
     loadCoverForBook(book.id);
     setStep('result');
   };
@@ -1589,6 +1642,33 @@ function App() {
                 {error && (
                   <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-3 rounded-lg mt-4" aria-live="polite">
                     {error}
+                  </div>
+                )}
+
+                {/* Summary Errors */}
+                {summaryErrors.length > 0 && (
+                  <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-3 rounded-lg mt-4" aria-live="polite">
+                    <div className="font-semibold mb-2">Chapter Summary Errors:</div>
+                    <ul className="list-disc list-inside space-y-1">
+                      {summaryErrors.map((err, i) => (
+                        <li key={i} className="text-sm">{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Summary Warnings */}
+                {summaryWarnings.length > 0 && (
+                  <div className="bg-amber-100 border border-amber-300 text-amber-700 px-4 py-3 rounded-lg mt-4" aria-live="polite">
+                    <div className="font-semibold mb-2">Chapter Summary Warnings:</div>
+                    <ul className="list-disc list-inside space-y-1">
+                      {summaryWarnings.map((warn, i) => (
+                        <li key={i} className="text-sm">{warn}</li>
+                      ))}
+                    </ul>
+                    <div className="text-sm mt-2 opacity-80">
+                      Your book was generated successfully, but some chapter summaries could not be created. You can still read and edit your chapters normally.
+                    </div>
                   </div>
                 )}
 
