@@ -153,13 +153,34 @@ function getSessionId(): string {
   try {
     let id = localStorage.getItem('session_id');
     if (!id) {
-      // @ts-ignore
-      id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      // Prefer crypto.randomUUID() if available, otherwise use getRandomValues fallback
+      if (typeof crypto !== 'undefined') {
+        if (crypto.randomUUID) {
+          id = crypto.randomUUID();
+        } else if (crypto.getRandomValues) {
+          // Generate a 16-byte (128-bit) random hex string
+          const arr = new Uint8Array(16);
+          crypto.getRandomValues(arr);
+          id = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+        } else {
+          // fallback for ancient browsers (shouldn't happen)
+          id = `${Date.now()}-xxxxxx`;
+        }
+      } else {
+        // fallback for environments without crypto
+        id = `${Date.now()}-xxxxxx`;
+      }
       localStorage.setItem('session_id', id);
     }
     return id;
   } catch {
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // fallback in error case
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const arr = new Uint8Array(16);
+      crypto.getRandomValues(arr);
+      return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    return `${Date.now()}-xxxxxx`;
   }
 }
 
