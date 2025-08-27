@@ -80,12 +80,29 @@ export function getSessionId(): string {
   try {
     let id = localStorage.getItem('session_id');
     if (!id) {
-      id = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      if (typeof crypto !== 'undefined') {
+        if (typeof crypto.randomUUID === 'function') {
+          id = crypto.randomUUID();
+        } else if (typeof crypto.getRandomValues === 'function') {
+          // fallback: generate UUID v4 using getRandomValues
+          const buf = new Uint8Array(16);
+          crypto.getRandomValues(buf);
+          // https://stackoverflow.com/a/2117523/772859
+          id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ buf[Math.floor(Math.random() * buf.length)] & 15 >> c / 4).toString(16)
+          );
+        } else {
+          throw new Error('No suitable crypto random function');
+        }
+      } else {
+        throw new Error('Secure randomness unavailable');
+      }
       localStorage.setItem('session_id', id);
     }
     return id;
   } catch {
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // If secure randomness is unavailable, fail hard rather than use Math.random
+    throw new Error('Unable to generate secure session id');
   }
 }
 

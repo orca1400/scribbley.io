@@ -34,7 +34,7 @@ import { PLAN, CHAPTER_LENGTH_RANGES, ChapterLength, CONSENT_VERSION } from './c
 import { chapterLimitFor, allowedLengthsFor } from './utils/plan';
 import { countWords, clamp } from './utils/text';
 import { saveBookToDatabase, upsertChapterSummary } from './services/books';
-import { withRetry, consentHeadersAnon } from './services/generation';
+import { withRetry, consentHeadersAnon, getSessionId } from './services/generation';
 import {
   streamInitialCover,
   dataUrlFromBase64,
@@ -666,7 +666,7 @@ function App() {
 
         const extraHeaders = {
           'x-user-id': user.id,
-          'x-session-id': localStorage.getItem('session_id') || '',
+          'x-session-id': getSessionId(),
           ...consentHeaders,
         };
 
