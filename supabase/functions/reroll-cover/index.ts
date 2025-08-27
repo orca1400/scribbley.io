@@ -203,7 +203,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("reroll-cover fatal:", e);
     return new Response(
-      JSON.stringify({ error: String((e as Error)?.message || e) }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: corsHeaders(req) }
     );
   }
