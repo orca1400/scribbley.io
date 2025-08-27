@@ -107,7 +107,7 @@ type Beat = { label: string; value?: string };
 // For preview only (UI). The API will receive base description + beats separately.
 export function buildPrompt(base: string, beats?: Beat[]) {
   const lines = (beats ?? [])
-    .filter(b => b.value && b.value.trim())
+    .filter(b => b.value?.trim())
     .map(b => `- ${b.label}: ${b.value!.trim()}`);
   return lines.length
     ? `${base.trim()}\n\nKey beats:\n${lines.join('\n')}`
@@ -152,36 +152,77 @@ function isNetworkLike(e: any) {
   );
 }
 
-async function edgeFetch<T>(
-  fnName: string,
-  payload: Record<string, any>,
-  opts?: {
-    bearer?: string | null;
-    extraHeaders?: Record<string, string>;
-    signal?: AbortSignal;
-    timeoutMs?: number;
-  }
-): Promise<T> {
-  const url = `${getFunctionsBaseUrl()}/${fnName}`;
+type EdgeFetchOptions = {
+  bearer?: string | null;
+  extraHeaders?: Record<string, string>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+function resolveAuth(opts?: EdgeFetchOptions) {
+  const bearer = opts?.bearer?.trim();
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  const authToken = (opts?.bearer && opts.bearer.trim()) || (anonKey ? anonKey : '');
-  if (!authToken) {
+  const token = bearer || anonKey || '';
+  if (!token) {
     throw new Error('Missing auth token: provide user access_token or VITE_SUPABASE_ANON_KEY');
   }
+  return { token, anonKey };
+}
 
-  const headers: Record<string, string> = {
+function buildHeaders(token: string, anonKey?: string, extra?: Record<string, string>) {
+  const base: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${authToken}`,
-    ...(anonKey ? { apikey: anonKey } : {}),
-    ...(opts?.extraHeaders ?? {}),
+    Authorization: `Bearer ${token}`,
   };
+  if (anonKey) base.apikey = anonKey;
+  return { ...base, ...(extra ?? {}) };
+}
 
+function setupAbort(userSignal?: AbortSignal, timeoutMs?: number) {
   const ac = new AbortController();
   const onAbort = () => ac.abort(new DOMException('client-timeout', 'AbortError'));
-  opts?.signal?.addEventListener('abort', onAbort, { once: true });
-  const tid = typeof opts?.timeoutMs === 'number' && opts?.timeoutMs > 0
-    ? setTimeout(() => ac.abort(new DOMException('client-timeout', 'AbortError')), opts!.timeoutMs)
-    : null;
+
+  userSignal?.addEventListener('abort', onAbort, { once: true });
+  const tid: ReturnType<typeof setTimeout> | null =
+    typeof timeoutMs === 'number' && timeoutMs > 0
+      ? setTimeout(() => ac.abort(new DOMException('client-timeout', 'AbortError')), timeoutMs)
+      : null;
+
+  const cleanup = () => {
+    if (tid) clearTimeout(tid);
+    userSignal?.removeEventListener('abort', onAbort as any);
+  };
+
+  return { signal: ac.signal, cleanup };
+}
+
+async function throwHttpError(res: Response): Promise<never> {
+  let text = '';
+  try {
+    text = await res.text();
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const j = text ? JSON.parse(text) : null;
+    if (j?.error) throw new Error(j.error);
+  } catch {
+    /* ignore */
+  }
+
+  throw new Error(text || `HTTP ${res.status}`);
+}
+
+export async function edgeFetch<T>(
+  fnName: string,
+  payload: Record<string, any>,
+  opts?: EdgeFetchOptions
+): Promise<T> {
+  const url = `${getFunctionsBaseUrl()}/${fnName}`;
+  const { token, anonKey } = resolveAuth(opts);
+  const headers = buildHeaders(token, anonKey, opts?.extraHeaders);
+  const { signal, cleanup } = setupAbort(opts?.signal, opts?.timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -190,24 +231,15 @@ async function edgeFetch<T>(
       credentials: 'omit',
       headers,
       body: JSON.stringify(payload ?? {}),
-      signal: ac.signal,
+      signal,
       cache: 'no-store',
       keepalive: false,
     });
 
-    if (!res.ok) {
-      let text = '';
-      try { text = await res.text(); } catch {}
-      try {
-        const j = text ? JSON.parse(text) : null;
-        if (j && j.error) throw new Error(j.error);
-      } catch {/* ignore */}
-      throw new Error(text || `HTTP ${res.status}`);
-    }
+    if (!res.ok) await throwHttpError(res);
     return (await res.json()) as T;
   } finally {
-    if (tid) clearTimeout(tid);
-    opts?.signal?.removeEventListener('abort', onAbort as any);
+    cleanup();
   }
 }
 
