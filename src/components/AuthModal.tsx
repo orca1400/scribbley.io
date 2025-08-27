@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { AI_CONSENT_VERSION } from '../lib/constants';
+import { CONSENT_VERSION } from '../config/plans';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -161,7 +161,7 @@ export function AuthModal({
                 id: uid,
                 ai_processing_consent: true,
                 ai_consent_at: new Date().toISOString(),
-                ai_consent_version: AI_CONSENT_VERSION,
+                ai_consent_version: CONSENT_VERSION,
                 gdpr_acknowledged_at: new Date().toISOString(),
                 // sensible defaults
                 allow_training: false,

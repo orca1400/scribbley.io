@@ -5,7 +5,7 @@ import { X, Save, Download, Trash2, LogOut, Shield, Eye, Clock, Database, HardDr
 import { supabase } from '../lib/supabase';
 import { startCheckout, openBillingPortal } from '../lib/billing';
 import { clearSessionCookie } from '../lib/session';
-import { AI_CONSENT_VERSION } from '../lib/constants';
+import { CONSENT_VERSION } from '../config/plans';
 import { BackupPanel } from './BackupPanel';
 
 type Profile = {
@@ -165,7 +165,7 @@ export function SettingsPanel({ user, profile, onClose, onSave }: SettingsPanelP
       // Record consent timestamp/version the first time it’s granted
       if (aiConsent && (!profile.ai_processing_consent || !profile.ai_consent_at)) {
         updates.ai_consent_at = new Date().toISOString();
-        updates.ai_consent_version = AI_CONSENT_VERSION;
+        updates.ai_consent_version = CONSENT_VERSION;
       }
 
       await onSave(updates);
