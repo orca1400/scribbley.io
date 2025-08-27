@@ -324,6 +324,10 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
             </ul>
             <p className="text-xs text-gray-500 mt-3">
               Manual backups are recommended before major changes or for personal archives.
+              <br /><br />
+              <strong>Note about restores:</strong> All restore operations (manual and automated) are performed on a "best effort" basis. 
+              If interrupted by network issues, browser closure, or server errors, only partial data may be restored. 
+              In such cases, re-run the restore process to complete any missing parts.
             </p>
           </section>
 

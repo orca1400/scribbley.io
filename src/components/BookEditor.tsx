@@ -1,5 +1,5 @@
 // src/components/BookEditor.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   ArrowLeft,
   Edit3,
@@ -361,6 +361,7 @@ export const BookEditor: React.FC<{
 
   const [error, setError] = useState('');
   const [summaryError, setSummaryError] = useState('');
+  const summaryErrorTimeoutRef = useRef<number | null>(null);
 
   // Rewrite UI
   const [selectedText, setSelectedText] = useState('');
@@ -592,6 +593,15 @@ export const BookEditor: React.FC<{
     return () => window.removeEventListener('keydown', onKey);
   }, [isSaving, chapters, book.title, bookTitle, saveChanges]);
 
+  // Cleanup summary error timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (summaryErrorTimeoutRef.current) {
+        clearTimeout(summaryErrorTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const generateAndSaveChapterSummary = async (
     chapterTitle: string,
     chapterContent: string,
@@ -653,8 +663,17 @@ export const BookEditor: React.FC<{
       console.error('Summary generation failed:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
       setSummaryError(`Failed to generate summary for Chapter ${chapterNumber}: ${errorMsg}`);
+      
+      // Clear any existing timeout
+      if (summaryErrorTimeoutRef.current) {
+        clearTimeout(summaryErrorTimeoutRef.current);
+      }
+      
       // Auto-clear the error after 10 seconds
-      setTimeout(() => setSummaryError(''), 10000);
+      summaryErrorTimeoutRef.current = window.setTimeout(() => {
+        setSummaryError('');
+        summaryErrorTimeoutRef.current = null;
+      }, 10000);
     }
   };
 
