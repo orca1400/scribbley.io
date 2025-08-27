@@ -14,6 +14,8 @@ import {
   ToggleLeft,
   Eye,
   EyeOff,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
@@ -308,6 +310,14 @@ function App() {
   const [anonConsent, setAnonConsent] = React.useState(false);
 
   const [authedConsent, setAuthedConsent] = React.useState(false);
+
+  // Chapter summary generation status
+  const [summaryStatus, setSummaryStatus] = React.useState<{
+    total: number;
+    completed: number;
+    failed: number;
+    errors: string[];
+  } | null>(null);
 
   // Covers
   const [coverUrl, setCoverUrl] = React.useState<string | null>(null);
@@ -905,8 +915,16 @@ function App() {
             });
           }
 
-          // Summaries in small batches
+          // Summaries in small batches with error tracking
           const BATCH = 3;
+          const totalChapters = parsed.chapters.length;
+          setSummaryStatus({
+            total: totalChapters,
+            completed: 0,
+            failed: 0,
+            errors: []
+          });
+
           for (let i = 0; i < parsed.chapters.length; i += BATCH) {
             const slice = parsed.chapters.slice(i, i + BATCH).map((chapter, idx) =>
               withRetry(async () => {
@@ -944,7 +962,26 @@ function App() {
                 });
               })
             );
-            Promise.allSettled(slice).catch(() => {});
+            
+            // Process results and update status
+            const results = await Promise.allSettled(slice);
+            setSummaryStatus(prev => {
+              if (!prev) return prev;
+              
+              const completed = results.filter(r => r.status === 'fulfilled').length;
+              const failed = results.filter(r => r.status === 'rejected').length;
+              const newErrors = results
+                .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+                .map(r => r.reason?.message || 'Unknown error')
+                .slice(0, 3); // Limit to first 3 errors to avoid UI clutter
+              
+              return {
+                total: prev.total,
+                completed: prev.completed + completed,
+                failed: prev.failed + failed,
+                errors: [...prev.errors, ...newErrors].slice(0, 5) // Keep max 5 errors
+              };
+            });
           }
         }
       }
@@ -982,6 +1019,7 @@ function App() {
     setCoverUrl(null); setCoverAttempt(0); setCoverErr('');
     setDescription(''); setGeneratedBook(''); setParsedBook(null); setError('');
     setCurrentBook(null);
+    setSummaryStatus(null);
     setTotalChapters(effectiveTier === 'free' ? 5 : 10);
     setAnonConsent(false);
     setAuthedConsent(!!profile?.ai_processing_consent);
@@ -996,6 +1034,7 @@ function App() {
     setSelectedGenre(null);
     setSelectedSubgenre(''); setDescription(''); setGeneratedBook(''); setParsedBook(null);
     setCoverUrl(null); setCoverAttempt(0); setCoverErr(''); setError('');
+    setSummaryStatus(null);
     coverStreamAbortRef.current?.abort();
     const limit = chapterLimitFor(profile, user?.id ?? null, effectiveTier);
     const defaultChapters = effectiveTier === 'free' ? 5 : 10;
@@ -1689,6 +1728,48 @@ function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Chapter Summary Generation Status */}
+                {summaryStatus && user && (
+                  <div className="mb-6">
+                    {summaryStatus.completed === summaryStatus.total ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <span className="text-sm font-medium text-green-800">
+                            All chapter summaries generated successfully!
+                          </span>
+                        </div>
+                      </div>
+                    ) : summaryStatus.failed > 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div className="text-sm text-amber-800">
+                            <div className="font-medium mb-1">
+                              Chapter summaries: {summaryStatus.completed} completed, {summaryStatus.failed} failed
+                            </div>
+                            {summaryStatus.errors.length > 0 && (
+                              <div className="text-xs">
+                                Recent errors: {summaryStatus.errors.slice(0, 2).join(', ')}
+                                {summaryStatus.errors.length > 2 && '...'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : summaryStatus.completed < summaryStatus.total ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm text-blue-800">
+                            Generating chapter summaries... ({summaryStatus.completed}/{summaryStatus.total})
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
 
                 {parsedBook && (
                   <ChapterList

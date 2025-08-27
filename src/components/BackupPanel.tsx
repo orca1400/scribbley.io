@@ -83,10 +83,44 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       setError(null);
       setSuccess(null);
 
-      await restoreBackup(backupPreview, userId);
-      setSuccess('Backup restored successfully! Your data has been updated.');
+      const result = await restoreBackup(backupPreview, userId);
       
-      // Refresh stats
+      if (result.success) {
+        setSuccess('Backup restored successfully! Your data has been updated.');
+      } else {
+        // Partial restoration
+        const details = [];
+        if (!result.results.profile.success) {
+          details.push(`Profile: ${result.results.profile.error}`);
+        }
+        if (!result.results.books.success) {
+          details.push(`Books: ${result.results.books.error} (${result.results.books.failed} failed)`);
+        }
+        if (!result.results.summaries.success) {
+          details.push(`Summaries: ${result.results.summaries.error} (${result.results.summaries.failed} failed)`);
+        }
+        
+        const successParts = [];
+        if (result.results.profile.success) successParts.push('Profile');
+        if (result.results.books.success && result.results.books.restored > 0) {
+          successParts.push(`${result.results.books.restored} books`);
+        }
+        if (result.results.summaries.success && result.results.summaries.restored > 0) {
+          successParts.push(`${result.results.summaries.restored} summaries`);
+        }
+        
+        const message = successParts.length > 0 
+          ? `Partial restore completed. Successfully restored: ${successParts.join(', ')}. Issues encountered: ${details.join('; ')}`
+          : `Restore failed. ${details.join('; ')}`;
+        
+        if (successParts.length > 0) {
+          setSuccess(message);
+        } else {
+          setError(message);
+        }
+      }
+      
+      // Refresh stats regardless of success/failure
       await loadStats();
       
       // Clear file selection
@@ -96,7 +130,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      setError('Failed to restore backup: ' + (error as Error).message);
+      setError('Failed to restore backup: ' + (error as Error).message + '. The restore process may have been interrupted. You can try running the restore again.');
     } finally {
       setIsRestoring(false);
     }
@@ -240,8 +274,14 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-800">
-                      <strong>Important:</strong> Restoring will merge this backup with your current data. 
-                      Books and summaries with matching IDs will be updated. This action cannot be undone.
+                      <div className="font-medium mb-2">Important Restore Information:</div>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Restoring will merge this backup with your current data</li>
+                        <li>• Books and summaries with matching IDs will be updated</li>
+                        <li>• This action cannot be undone</li>
+                        <li>• <strong>Restores are "best effort"</strong> - if the process is interrupted by network issues or browser closure, only some data may be restored</li>
+                        <li>• If a partial restore occurs, you may need to run the restore again</li>
+                      </ul>
                     </div>
                   </div>
                 </div>

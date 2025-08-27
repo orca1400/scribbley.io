@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   FileDown,
   Image as ImageIcon,
+  AlertTriangle,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -359,6 +360,7 @@ export const BookEditor: React.FC<{
   const [beats, setBeats] = useState<{ id: string; text: string }[]>([{ id: newId(), text: '' }]);
 
   const [error, setError] = useState('');
+  const [summaryError, setSummaryError] = useState('');
 
   // Rewrite UI
   const [selectedText, setSelectedText] = useState('');
@@ -649,6 +651,10 @@ export const BookEditor: React.FC<{
       });
     } catch (error) {
       console.error('Summary generation failed:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+      setSummaryError(`Failed to generate summary for Chapter ${chapterNumber}: ${errorMsg}`);
+      // Auto-clear the error after 10 seconds
+      setTimeout(() => setSummaryError(''), 10000);
     }
   };
 
@@ -761,6 +767,7 @@ export const BookEditor: React.FC<{
         await generateAndSaveChapterSummary(newChapter.title, newChapter.content, idx);
       } catch (summaryError) {
         console.error('Failed to generate chapter summary:', summaryError);
+        // Error display is handled in generateAndSaveChapterSummary function
       }
 
       // usage update + notifications (keep your existing logic)
@@ -1115,6 +1122,19 @@ export const BookEditor: React.FC<{
         {!!error && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4" aria-live="polite">
             {error}
+          </div>
+        )}
+
+        {/* summary error banner */}
+        {!!summaryError && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg mb-4" aria-live="polite">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-medium">Chapter Summary Error</div>
+                <div className="text-sm">{summaryError}</div>
+              </div>
+            </div>
           </div>
         )}
 

@@ -137,9 +137,16 @@ export function validateBackup(data: any): data is BackupData {
 }
 
 /**
- * Restore backup data (careful - this will overwrite existing data)
+ * Restore backup data with detailed error tracking
  */
-export async function restoreBackup(backupData: BackupData, userId: string): Promise<void> {
+export async function restoreBackup(backupData: BackupData, userId: string): Promise<{
+  success: boolean;
+  results: {
+    profile: { success: boolean; error?: string };
+    books: { success: boolean; restored: number; failed: number; error?: string };
+    summaries: { success: boolean; restored: number; failed: number; error?: string };
+  };
+}> {
   if (!validateBackup(backupData)) {
     throw new Error('Invalid backup data format');
   }
@@ -148,61 +155,93 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
     throw new Error('Backup user ID does not match current user');
   }
   
+  const results = {
+    profile: { success: false },
+    books: { success: false, restored: 0, failed: 0 },
+    summaries: { success: false, restored: 0, failed: 0 }
+  };
+  
   try {
-    // Start transaction-like operations
-    // Note: We'll do this carefully to avoid data loss
-    
     // 1. Update profile (merge with existing to preserve system fields)
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .update({
-        display_name: backupData.profile.display_name,
-        bio: backupData.profile.bio,
-        ui_language: backupData.profile.ui_language,
-        book_language: backupData.profile.book_language,
-        timezone: backupData.profile.timezone,
-        avatar_url: backupData.profile.avatar_url,
-        ai_processing_consent: backupData.profile.ai_processing_consent,
-        allow_training: backupData.profile.allow_training,
-        content_retention_days: backupData.profile.content_retention_days,
-        log_retention_days: backupData.profile.log_retention_days,
-        default_visibility: backupData.profile.default_visibility,
-      })
-      .eq('id', userId);
-    
-    if (profileError) throw profileError;
+    try {
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({
+          display_name: backupData.profile.display_name,
+          bio: backupData.profile.bio,
+          ui_language: backupData.profile.ui_language,
+          book_language: backupData.profile.book_language,
+          timezone: backupData.profile.timezone,
+          avatar_url: backupData.profile.avatar_url,
+          ai_processing_consent: backupData.profile.ai_processing_consent,
+          allow_training: backupData.profile.allow_training,
+          content_retention_days: backupData.profile.content_retention_days,
+          log_retention_days: backupData.profile.log_retention_days,
+          default_visibility: backupData.profile.default_visibility,
+        })
+        .eq('id', userId);
+      
+      if (profileError) throw profileError;
+      results.profile.success = true;
+    } catch (error) {
+      results.profile.error = (error as Error).message;
+      console.error('Profile restore failed:', error);
+    }
     
     // 2. Restore books (upsert to avoid conflicts)
     if (backupData.books.length > 0) {
-      const { error: booksError } = await supabase
-        .from('user_books')
-        .upsert(
-          backupData.books.map(book => ({
-            ...book,
-            user_id: userId, // Ensure correct user_id
-          })),
-          { onConflict: 'id' }
-        );
-      
-      if (booksError) throw booksError;
+      try {
+        const { error: booksError } = await supabase
+          .from('user_books')
+          .upsert(
+            backupData.books.map(book => ({
+              ...book,
+              user_id: userId, // Ensure correct user_id
+            })),
+            { onConflict: 'id' }
+          );
+        
+        if (booksError) throw booksError;
+        results.books.success = true;
+        results.books.restored = backupData.books.length;
+      } catch (error) {
+        results.books.error = (error as Error).message;
+        results.books.failed = backupData.books.length;
+        console.error('Books restore failed:', error);
+      }
+    } else {
+      results.books.success = true; // No books to restore
     }
     
     // 3. Restore chapter summaries (upsert to avoid conflicts)
     if (backupData.chapter_summaries.length > 0) {
-      const { error: summariesError } = await supabase
-        .from('chapter_summaries')
-        .upsert(
-          backupData.chapter_summaries.map(summary => ({
-            ...summary,
-            user_id: userId, // Ensure correct user_id
-          })),
-          { onConflict: 'book_id,chapter_number' }
-        );
-      
-      if (summariesError) throw summariesError;
+      try {
+        const { error: summariesError } = await supabase
+          .from('chapter_summaries')
+          .upsert(
+            backupData.chapter_summaries.map(summary => ({
+              ...summary,
+              user_id: userId, // Ensure correct user_id
+            })),
+            { onConflict: 'book_id,chapter_number' }
+          );
+        
+        if (summariesError) throw summariesError;
+        results.summaries.success = true;
+        results.summaries.restored = backupData.chapter_summaries.length;
+      } catch (error) {
+        results.summaries.error = (error as Error).message;
+        results.summaries.failed = backupData.chapter_summaries.length;
+        console.error('Summaries restore failed:', error);
+      }
+    } else {
+      results.summaries.success = true; // No summaries to restore
     }
     
-    console.log('Backup restored successfully');
+    const overallSuccess = results.profile.success && results.books.success && results.summaries.success;
+    console.log('Backup restore completed:', { overallSuccess, results });
+    
+    return { success: overallSuccess, results };
   } catch (error) {
     console.error('Error restoring backup:', error);
     throw new Error('Failed to restore backup: ' + (error as Error).message);
