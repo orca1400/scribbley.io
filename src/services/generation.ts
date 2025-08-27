@@ -84,12 +84,33 @@ export function getSessionId(): string {
         if (typeof crypto.randomUUID === 'function') {
           id = crypto.randomUUID();
         } else if (typeof crypto.getRandomValues === 'function') {
-          // fallback: generate UUID v4 using getRandomValues
+          // fallback: generate UUID v4 using getRandomValues - fully secure, see RFC 4122
           const buf = new Uint8Array(16);
           crypto.getRandomValues(buf);
-          // https://stackoverflow.com/a/2117523/772859
-          id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-            (c ^ buf[Math.floor(Math.random() * buf.length)] & 15 >> c / 4).toString(16)
+          // Set the version and variant bits as required by RFC 4122
+          buf[6] = (buf[6] & 0x0f) | 0x40; // Version 4
+          buf[8] = (buf[8] & 0x3f) | 0x80; // Variant 10
+          const byteToHex = [];
+          for (let i = 0; i < 256; ++i) {
+            byteToHex.push((i + 0x100).toString(16).slice(1));
+          }
+          id = (
+            byteToHex[buf[0]] +
+            byteToHex[buf[1]] +
+            byteToHex[buf[2]] +
+            byteToHex[buf[3]] + '-' +
+            byteToHex[buf[4]] +
+            byteToHex[buf[5]] + '-' +
+            byteToHex[buf[6]] +
+            byteToHex[buf[7]] + '-' +
+            byteToHex[buf[8]] +
+            byteToHex[buf[9]] + '-' +
+            byteToHex[buf[10]] +
+            byteToHex[buf[11]] +
+            byteToHex[buf[12]] +
+            byteToHex[buf[13]] +
+            byteToHex[buf[14]] +
+            byteToHex[buf[15]]
           );
         } else {
           throw new Error('No suitable crypto random function');
