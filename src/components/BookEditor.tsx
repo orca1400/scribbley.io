@@ -536,15 +536,26 @@ export const BookEditor: React.FC<{
       if (updateError) throw updateError;
 
       // Generate summaries for changed chapters
+      let summaryFailures = 0;
       for (let i = 0; i < chapters.length; i++) {
         const ch = chapters[i];
         if (ch.hasChanges) {
-          await generateAndSaveChapterSummary(ch.title, ch.content, i + 1);
+          try {
+            await generateAndSaveChapterSummary(ch.title, ch.content, i + 1);
+          } catch (summaryError) {
+            console.error('Failed to generate chapter summary:', summaryError);
+            summaryFailures++;
+          }
         }
       }
 
       setChapters((prev) => prev.map((ch) => ({ ...ch, hasChanges: false, isEditing: false })));
       setParsedBook((prev) => (prev ? { ...prev, title: bookTitle } : null));
+
+      // Show summary failure message if any failed
+      if (summaryFailures > 0) {
+        setError(`Some chapter summaries failed to update (${summaryFailures}). You can retry by saving again.`);
+      }
     } catch (err: any) {
       console.error('Error saving changes:', err);
       setError('Failed to save changes. Please try again.');

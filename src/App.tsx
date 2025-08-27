@@ -309,6 +309,9 @@ function App() {
 
   const [authedConsent, setAuthedConsent] = React.useState(false);
 
+  // Chapter summary generation tracking
+  const [summaryFailureCount, setSummaryFailureCount] = React.useState(0);
+
   // Covers
   const [coverUrl, setCoverUrl] = React.useState<string | null>(null);
   const [coverAttempt, setCoverAttempt] = React.useState<number>(0);
@@ -639,6 +642,7 @@ function App() {
 
     setIsGenerating(true);
     setError('');
+    setSummaryFailureCount(0); // Reset summary failure count on new generation
 
     // Project limit check
     if (user && profile?.projects_limit != null) {
@@ -907,6 +911,7 @@ function App() {
 
           // Summaries in small batches
           const BATCH = 3;
+          let totalFailures = 0;
           for (let i = 0; i < parsed.chapters.length; i += BATCH) {
             const slice = parsed.chapters.slice(i, i + BATCH).map((chapter, idx) =>
               withRetry(async () => {
@@ -944,8 +949,11 @@ function App() {
                 });
               })
             );
-            Promise.allSettled(slice).catch(() => {});
+            const results = await Promise.allSettled(slice);
+            const batchFailures = results.filter(r => r.status === 'rejected').length;
+            totalFailures += batchFailures;
           }
+          setSummaryFailureCount(totalFailures);
         }
       }
 
@@ -1650,6 +1658,21 @@ function App() {
                     {selectedGenre} → {selectedSubgenre}
                   </span>
                 </div>
+
+                {/* Summary Generation Warning Banner */}
+                {summaryFailureCount > 0 && (
+                  <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5">
+                        ⚠️
+                      </div>
+                      <div className="text-sm text-amber-800">
+                        <strong>Notice:</strong> Some chapter summaries could not be generated ({summaryFailureCount} failed). 
+                        You can try again from the editor.
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-6">
                   <div className="w-full max-w-sm mx-auto">

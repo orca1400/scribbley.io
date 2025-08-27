@@ -16,6 +16,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
   const [stats, setStats] = useState<{ books: number; summaries: number; usage_events: number } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [backupPreview, setBackupPreview] = useState<BackupData | null>(null);
+  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -56,6 +57,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       setSelectedFile(file);
       setError(null);
       setBackupPreview(null);
+      setRestoreConfirmed(false); // Reset confirmation when selecting new file
 
       const text = await file.text();
       const data = JSON.parse(text);
@@ -92,6 +94,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       // Clear file selection
       setSelectedFile(null);
       setBackupPreview(null);
+      setRestoreConfirmed(false); // Reset confirmation after successful restore
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -241,15 +244,32 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-800">
                       <strong>Important:</strong> Restoring will merge this backup with your current data. 
-                      Books and summaries with matching IDs will be updated. This action cannot be undone.
+                      Books and summaries with matching IDs will be updated. This action cannot be undone. 
+                      The restore may be partial if interrupted.
                     </div>
                   </div>
                 </div>
               )}
 
+              {backupPreview && (
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="restore-confirm"
+                    checked={restoreConfirmed}
+                    onChange={(e) => setRestoreConfirmed(e.target.checked)}
+                    className="mt-1 flex-shrink-0"
+                  />
+                  <label htmlFor="restore-confirm" className="text-sm text-gray-700 cursor-pointer">
+                    I understand that this will merge backup data with my current data and may be partial if interrupted. 
+                    This action cannot be undone.
+                  </label>
+                </div>
+              )}
+
               <button
                 onClick={handleRestoreBackup}
-                disabled={!backupPreview || isRestoring}
+                disabled={!backupPreview || isRestoring || !restoreConfirmed}
                 className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
               >
                 {isRestoring ? (
