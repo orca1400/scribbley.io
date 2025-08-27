@@ -148,11 +148,14 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
     throw new Error('Backup user ID does not match current user');
   }
   
+  const steps: string[] = [];
+  
   try {
     // Start transaction-like operations
     // Note: We'll do this carefully to avoid data loss
     
     // 1. Update profile (merge with existing to preserve system fields)
+    steps.push('Updating profile settings');
     const { error: profileError } = await supabase
       .from('user_profiles')
       .update({
@@ -170,10 +173,11 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
       })
       .eq('id', userId);
     
-    if (profileError) throw profileError;
+    if (profileError) throw new Error(`Failed during profile restore: ${profileError.message}`);
     
     // 2. Restore books (upsert to avoid conflicts)
     if (backupData.books.length > 0) {
+      steps.push(`Restoring ${backupData.books.length} books`);
       const { error: booksError } = await supabase
         .from('user_books')
         .upsert(
@@ -184,11 +188,12 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
           { onConflict: 'id' }
         );
       
-      if (booksError) throw booksError;
+      if (booksError) throw new Error(`Failed during books restore (${backupData.books.length} books): ${booksError.message}`);
     }
     
     // 3. Restore chapter summaries (upsert to avoid conflicts)
     if (backupData.chapter_summaries.length > 0) {
+      steps.push(`Restoring ${backupData.chapter_summaries.length} chapter summaries`);
       const { error: summariesError } = await supabase
         .from('chapter_summaries')
         .upsert(
@@ -199,13 +204,14 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
           { onConflict: 'book_id,chapter_number' }
         );
       
-      if (summariesError) throw summariesError;
+      if (summariesError) throw new Error(`Failed during chapter summaries restore (${backupData.chapter_summaries.length} summaries): ${summariesError.message}`);
     }
     
     console.log('Backup restored successfully');
   } catch (error) {
     console.error('Error restoring backup:', error);
-    throw new Error('Failed to restore backup: ' + (error as Error).message);
+    const completedSteps = steps.length > 0 ? ` Completed steps: ${steps.join(', ')}.` : '';
+    throw new Error(`Failed to restore backup: ${(error as Error).message}.${completedSteps} This may have been a partial restore.`);
   }
 }
 

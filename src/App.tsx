@@ -955,7 +955,15 @@ function App() {
                 throw err; // Re-throw to maintain original behavior
               })
             );
-            Promise.allSettled(summaryPromises).catch(() => {});
+            const summaryResults = await Promise.allSettled(summaryPromises);
+            
+            // Count successes and failures
+            const successCount = summaryResults.filter(r => r.status === 'fulfilled').length;
+            const failureCount = summaryResults.filter(r => r.status === 'rejected').length;
+            
+            if (failureCount > 0 && successCount > 0) {
+              setSummaryErrors(prev => [...prev, `⚠️ Chapter Summary Summary: ${successCount} successful, ${failureCount} failed out of ${summaryResults.length} total chapters`]);
+            }
           }
         }
       }
