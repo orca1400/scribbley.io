@@ -360,6 +360,7 @@ export const BookEditor: React.FC<{
 
   const [error, setError] = useState('');
   const [summaryErrors, setSummaryErrors] = useState<string[]>([]);
+  const [nonFatalWarnings, setNonFatalWarnings] = useState<string[]>([]);
 
   // Rewrite UI
   const [selectedText, setSelectedText] = useState('');
@@ -824,11 +825,13 @@ export const BookEditor: React.FC<{
               });
             } catch (mailErr) {
               console.error('Error sending usage-alert mails:', mailErr);
+              setNonFatalWarnings(prev => [...prev, 'Failed to send usage alert email. Your chapter was created successfully.']);
             }
           }
         }
       } catch (wordUpdateError) {
         console.error('Error in usage update flow:', wordUpdateError);
+        setNonFatalWarnings(prev => [...prev, 'Failed to update usage statistics. Your chapter was created successfully.']);
       }
 
       setShowNewChapterModal(false);
@@ -1144,6 +1147,37 @@ export const BookEditor: React.FC<{
                 <button
                   onClick={() => setSummaryErrors([])}
                   className="text-sm mt-2 text-amber-700 hover:text-amber-900 underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* non-fatal warnings banner */}
+        {nonFatalWarnings.length > 0 && (
+          <div className="bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-lg mb-4">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <div className="font-medium">Operation Completed with Minor Issues</div>
+                <div className="text-sm mt-1">
+                  Your main action succeeded, but some background processes had issues:
+                </div>
+                <ul className="text-sm mt-2 space-y-1">
+                  {nonFatalWarnings.map((warning, index) => (
+                    <li key={index} className="flex items-start">
+                      <span className="text-blue-600 mr-2">•</span>
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => setNonFatalWarnings([])}
+                  className="text-sm mt-2 text-blue-700 hover:text-blue-900 underline"
                 >
                   Dismiss
                 </button>

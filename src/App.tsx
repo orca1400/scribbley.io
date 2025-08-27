@@ -301,6 +301,7 @@ function App() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [error, setError] = React.useState('');
   const [summaryErrors, setSummaryErrors] = React.useState<string[]>([]);
+  const [nonFatalWarnings, setNonFatalWarnings] = React.useState<string[]>([]);
   const [showingSignupSuccess, setShowingSignupSuccess] = React.useState(false);
 
   const [isCreatingFromDashboard, setIsCreatingFromDashboard] = React.useState(false);
@@ -661,6 +662,7 @@ function App() {
     const ctrl = new AbortController();
     genAbortRef.current = ctrl;
     setSummaryErrors([]); // Clear previous summary errors
+    setNonFatalWarnings([]); // Clear previous non-fatal warnings
 
     try {
       let bearer: string | null = null;
@@ -994,6 +996,7 @@ function App() {
     setCoverUrl(null); setCoverAttempt(0); setCoverErr('');
     setDescription(''); setGeneratedBook(''); setParsedBook(null); setError('');
     setSummaryErrors([]);
+    setNonFatalWarnings([]);
     setCurrentBook(null);
     setTotalChapters(effectiveTier === 'free' ? 5 : 10);
     setAnonConsent(false);
@@ -1628,6 +1631,37 @@ function App() {
                         <div className="text-sm mt-2 text-amber-700">
                           This doesn't affect your book content. You can try regenerating summaries later from the editor.
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Non-fatal Warnings */}
+                {nonFatalWarnings.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-lg mt-4">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <div className="font-medium">Book Generation Completed with Minor Issues</div>
+                        <div className="text-sm mt-1">
+                          Your book was generated successfully, but some background processes had issues:
+                        </div>
+                        <ul className="text-sm mt-2 space-y-1">
+                          {nonFatalWarnings.map((warning, index) => (
+                            <li key={index} className="flex items-start">
+                              <span className="text-blue-600 mr-2">•</span>
+                              {warning}
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          onClick={() => setNonFatalWarnings([])}
+                          className="text-sm mt-2 text-blue-700 hover:text-blue-900 underline"
+                        >
+                          Dismiss
+                        </button>
                       </div>
                     </div>
                   </div>
