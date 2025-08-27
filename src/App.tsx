@@ -300,6 +300,7 @@ function App() {
 
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [summaryErrors, setSummaryErrors] = React.useState<string[]>([]);
   const [showingSignupSuccess, setShowingSignupSuccess] = React.useState(false);
 
   const [isCreatingFromDashboard, setIsCreatingFromDashboard] = React.useState(false);
@@ -659,6 +660,7 @@ function App() {
     genAbortRef.current?.abort();
     const ctrl = new AbortController();
     genAbortRef.current = ctrl;
+    setSummaryErrors([]); // Clear previous summary errors
 
     try {
       let bearer: string | null = null;
@@ -758,7 +760,10 @@ function App() {
               selectedGenre || 'fiction',
               selectedSubgenre || ''
             )
-          ).catch((e) => console.error('First chapter summary failed:', e));
+          ).catch((e) => {
+            console.error('First chapter summary failed:', e);
+            setSummaryErrors(prev => [...prev, `Failed to generate summary for first chapter: ${e?.message || 'Unknown error'}`]);
+          });
 
           setCurrentBook(savedBook);
           setStep('editor');
@@ -944,7 +949,14 @@ function App() {
                 });
               })
             );
-            Promise.allSettled(slice).catch(() => {});
+            Promise.allSettled(slice).then(results => {
+              results.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                  const chapterNum = i + idx + 1 + index;
+                  setSummaryErrors(prev => [...prev, `Failed to generate summary for chapter ${chapterNum}: ${result.reason?.message || 'Unknown error'}`]);
+                }
+              });
+            }).catch(() => {});
           }
         }
       }
@@ -981,6 +993,7 @@ function App() {
     setSelectedSubgenre('');
     setCoverUrl(null); setCoverAttempt(0); setCoverErr('');
     setDescription(''); setGeneratedBook(''); setParsedBook(null); setError('');
+    setSummaryErrors([]);
     setCurrentBook(null);
     setTotalChapters(effectiveTier === 'free' ? 5 : 10);
     setAnonConsent(false);
@@ -1589,6 +1602,34 @@ function App() {
                 {error && (
                   <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-3 rounded-lg mt-4" aria-live="polite">
                     {error}
+                  </div>
+                )}
+
+                {/* Summary Generation Warnings */}
+                {summaryErrors.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg mt-4">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <div className="font-medium">Chapter Summary Issues</div>
+                        <div className="text-sm mt-1">
+                          Your book was generated successfully, but some chapter summaries couldn't be created:
+                        </div>
+                        <ul className="text-sm mt-2 space-y-1">
+                          {summaryErrors.map((error, index) => (
+                            <li key={index} className="flex items-start">
+                              <span className="text-amber-600 mr-2">•</span>
+                              {error}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="text-sm mt-2 text-amber-700">
+                          This doesn't affect your book content. You can try regenerating summaries later from the editor.
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 

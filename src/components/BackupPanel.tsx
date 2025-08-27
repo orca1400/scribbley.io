@@ -83,8 +83,18 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       setError(null);
       setSuccess(null);
 
-      await restoreBackup(backupPreview, userId);
-      setSuccess('Backup restored successfully! Your data has been updated.');
+      const result = await restoreBackup(backupPreview, userId);
+      
+      if (result.success) {
+        setSuccess(`Backup restored successfully! Restored: ${result.restored.books} books, ${result.restored.summaries} summaries, and profile data.`);
+      } else if (result.partialSuccess) {
+        const successParts = [];
+        if (result.restored.profile) successParts.push('profile');
+        if (result.restored.books > 0) successParts.push(`${result.restored.books} books`);
+        if (result.restored.summaries > 0) successParts.push(`${result.restored.summaries} summaries`);
+        
+        setError(`Partial restore completed. Successfully restored: ${successParts.join(', ')}. Errors: ${result.errors.join('; ')}`);
+      }
       
       // Refresh stats
       await loadStats();
@@ -195,6 +205,21 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
             <p className="text-gray-600 mb-4">
               Upload a backup file to restore your data. This will merge with your existing data (books and summaries will be updated if they exist).
             </p>
+            
+            {/* Best effort warning */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <div className="text-sm text-blue-800">
+                  <div className="font-medium">Best Effort Restore</div>
+                  <div className="mt-1">
+                    Backup restoration is performed on a "best effort" basis. If the process is interrupted by network issues, browser closure, or other errors, only some of your data may be restored. Please ensure a stable connection and avoid closing the browser during restoration.
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -242,6 +267,10 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
                     <div className="text-sm text-amber-800">
                       <strong>Important:</strong> Restoring will merge this backup with your current data. 
                       Books and summaries with matching IDs will be updated. This action cannot be undone.
+                      <br /><br />
+                      <strong>Partial Restore Risk:</strong> If the restore process is interrupted due to network issues, 
+                      browser closure, or other errors, only some data may be restored successfully. Ensure you have a 
+                      stable connection and keep this tab open during the entire process.
                     </div>
                   </div>
                 </div>

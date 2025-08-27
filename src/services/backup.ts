@@ -139,7 +139,12 @@ export function validateBackup(data: any): data is BackupData {
 /**
  * Restore backup data (careful - this will overwrite existing data)
  */
-export async function restoreBackup(backupData: BackupData, userId: string): Promise<void> {
+export async function restoreBackup(backupData: BackupData, userId: string): Promise<{
+  success: boolean;
+  errors: string[];
+  partialSuccess: boolean;
+  restored: { profile: boolean; books: number; summaries: number };
+}> {
   if (!validateBackup(backupData)) {
     throw new Error('Invalid backup data format');
   }
@@ -148,11 +153,11 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
     throw new Error('Backup user ID does not match current user');
   }
   
+  const errors: string[] = [];
+  const restored = { profile: false, books: 0, summaries: 0 };
+  
+  // 1. Update profile (merge with existing to preserve system fields)
   try {
-    // Start transaction-like operations
-    // Note: We'll do this carefully to avoid data loss
-    
-    // 1. Update profile (merge with existing to preserve system fields)
     const { error: profileError } = await supabase
       .from('user_profiles')
       .update({
@@ -170,10 +175,18 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
       })
       .eq('id', userId);
     
-    if (profileError) throw profileError;
-    
-    // 2. Restore books (upsert to avoid conflicts)
-    if (backupData.books.length > 0) {
+    if (profileError) {
+      errors.push(`Profile restore failed: ${profileError.message}`);
+    } else {
+      restored.profile = true;
+    }
+  } catch (error) {
+    errors.push(`Profile restore failed: ${(error as Error).message}`);
+  }
+  
+  // 2. Restore books (upsert to avoid conflicts)
+  if (backupData.books.length > 0) {
+    try {
       const { error: booksError } = await supabase
         .from('user_books')
         .upsert(
@@ -184,11 +197,19 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
           { onConflict: 'id' }
         );
       
-      if (booksError) throw booksError;
+      if (booksError) {
+        errors.push(`Books restore failed: ${booksError.message}`);
+      } else {
+        restored.books = backupData.books.length;
+      }
+    } catch (error) {
+      errors.push(`Books restore failed: ${(error as Error).message}`);
     }
-    
-    // 3. Restore chapter summaries (upsert to avoid conflicts)
-    if (backupData.chapter_summaries.length > 0) {
+  }
+  
+  // 3. Restore chapter summaries (upsert to avoid conflicts)
+  if (backupData.chapter_summaries.length > 0) {
+    try {
       const { error: summariesError } = await supabase
         .from('chapter_summaries')
         .upsert(
@@ -199,14 +220,32 @@ export async function restoreBackup(backupData: BackupData, userId: string): Pro
           { onConflict: 'book_id,chapter_number' }
         );
       
-      if (summariesError) throw summariesError;
+      if (summariesError) {
+        errors.push(`Chapter summaries restore failed: ${summariesError.message}`);
+      } else {
+        restored.summaries = backupData.chapter_summaries.length;
+      }
+    } catch (error) {
+      errors.push(`Chapter summaries restore failed: ${(error as Error).message}`);
     }
-    
-    console.log('Backup restored successfully');
-  } catch (error) {
-    console.error('Error restoring backup:', error);
-    throw new Error('Failed to restore backup: ' + (error as Error).message);
   }
+  
+  const hasAnySuccess = restored.profile || restored.books > 0 || restored.summaries > 0;
+  const hasAnyFailure = errors.length > 0;
+  
+  if (!hasAnySuccess && hasAnyFailure) {
+    // Complete failure
+    throw new Error(`Backup restore failed completely: ${errors.join('; ')}`);
+  }
+  
+  console.log('Backup restore completed:', { restored, errors });
+  
+  return {
+    success: !hasAnyFailure,
+    errors,
+    partialSuccess: hasAnySuccess && hasAnyFailure,
+    restored
+  };
 }
 
 /**
