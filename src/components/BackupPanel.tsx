@@ -83,8 +83,27 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
       setError(null);
       setSuccess(null);
 
-      await restoreBackup(backupPreview, userId);
-      setSuccess('Backup restored successfully! Your data has been updated.');
+      const result = await restoreBackup(backupPreview, userId);
+      
+      if (result.success) {
+        setSuccess('Backup restored successfully! Your data has been updated.');
+      } else {
+        // Partial restore - show details
+        const successParts = [];
+        if (result.details.profile) successParts.push('profile');
+        if (result.details.books.succeeded > 0) successParts.push(`${result.details.books.succeeded} books`);
+        if (result.details.summaries.succeeded > 0) successParts.push(`${result.details.summaries.succeeded} summaries`);
+        
+        const successMsg = successParts.length > 0 
+          ? `Partial restore completed. Successfully restored: ${successParts.join(', ')}.`
+          : 'Restore completed with limited success.';
+          
+        const errorMsg = result.errors.length > 0 
+          ? ` Some items failed: ${result.errors.join('; ')}`
+          : '';
+          
+        setSuccess(successMsg + errorMsg);
+      }
       
       // Refresh stats
       await loadStats();
@@ -96,7 +115,7 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      setError('Failed to restore backup: ' + (error as Error).message);
+      setError('Failed to restore backup: ' + (error as Error).message + '. This may have been a partial restore - please check your data.');
     } finally {
       setIsRestoring(false);
     }
@@ -193,7 +212,8 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
               Restore Backup
             </h3>
             <p className="text-gray-600 mb-4">
-              Upload a backup file to restore your data. This will merge with your existing data (books and summaries will be updated if they exist).
+              Upload a backup file to restore your data. This will merge with your existing data using a "best effort" approach. 
+              Books and summaries will be updated if they exist, but the restore process may be partial if interrupted by network errors or other issues.
             </p>
 
             <div className="space-y-4">
@@ -239,9 +259,17 @@ export function BackupPanel({ userId, onClose }: BackupPanelProps) {
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-amber-800">
-                      <strong>Important:</strong> Restoring will merge this backup with your current data. 
-                      Books and summaries with matching IDs will be updated. This action cannot be undone.
+                    <div className="text-sm text-amber-800 space-y-2">
+                      <div>
+                        <strong>Important - Read Before Proceeding:</strong>
+                      </div>
+                      <ul className="list-disc list-inside space-y-1 ml-2">
+                        <li>This restore is performed on a "best effort" basis and may be partial if interrupted</li>
+                        <li>Network errors or connection issues could result in incomplete data restoration</li>
+                        <li>Books and summaries with matching IDs will be updated - this action cannot be undone</li>
+                        <li>If the process fails partway through, some data may be restored while other data may not</li>
+                        <li>We recommend ensuring a stable internet connection before proceeding</li>
+                      </ul>
                     </div>
                   </div>
                 </div>
